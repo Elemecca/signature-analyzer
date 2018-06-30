@@ -13,7 +13,6 @@ module sigan (
 );
   parameter service = 0;
   wire reset_h = !reset_l;
-  wire clock_l = !clock;
   wire data_latch;
   wire word_gate, clk_gate;
   wire word_reset_l, word_clk;
@@ -24,15 +23,17 @@ module sigan (
     .clk(clock),
     .start(start),
     .stop(stop),
+    .hold(1'b0),
+    .dis(1'b0),
     .word_gate(word_gate),
     .clk_gate(clk_gate)
   );
 
   // synchronize input data to input clock - replaces U9
   // The original board uses a JK flip-flop here because it has
-  // separate inputs for low and high data values. We don't, so
-  // we use a D flip-flop, but it needs to reset high.
-  flop_d #(.reset_val(1)) data_jk (
+  // separate inputs for low and high data values. We have a single
+  // input, so we use a D flip-flop instead.
+  flop_d #(.reset_val(1)) u9 (
     .reset_l(reset_l),
     .clk(clock),
     .d(data),
@@ -40,7 +41,7 @@ module sigan (
   );
 
   nor u7b (word_reset_l, word_gate, reset_h);
-  nand u11c (word_clk, clk_gate, clock_l);
+  nand u11c (word_clk, clk_gate, !clock);
 
   word_gen #(.service(service)) word_gen (
     .reset_l(word_reset_l),
@@ -100,14 +101,13 @@ module gate_con (
   // S7A - normal/service switch
   generate
     if (service) assign y1 = test1;
-    else begin
-      // u2 - and-or-invert
-      assign y1 = !(
-        loopback
-        || (start_buf_l && y2)
-        || (start_buf_l && stop_buf)
-        || (stop_buf && y4)
-      );
+    else begin :u1
+      wire c1, c2, c3, c4;
+      and (c1, start_buf_l, y2);
+      and (c2, start_buf_l, stop_buf);
+      and (c3, stop_buf, y4);
+      and (c4, loopback);
+      nor (y1, c1, c2, c3, c4);
     end
   endgenerate
 
@@ -121,14 +121,13 @@ module gate_con (
   // S7B - normal/service switch
   generate
     if (service) assign clk_gate = test2;
-    else begin
-      // u4 - and-or-invert
-      assign clk_gate = !(
-        loopback
-        || (stop_buf_l && y2)
-        || (y2 && y4_l)
-        || (start_buf && y4_l)
-      );
+    else begin :u4
+      wire c1, c2, c3, c4;
+      and (c1, stop_buf_l, y2);
+      and (c2, y2, y4_l);
+      and (c3, start_buf, y4_l);
+      and (c4, loopback);
+      nor (clk_gate, c1, c2, c3, c4);
     end
   endgenerate
 
@@ -233,10 +232,9 @@ module parity_gen (
   input [9:1] p,
   input inhibit
 );
-  wire [9:1] pn;
+  wire [9:1] pn = ~p;
   wire y0, y1, y2, y3, y4, y5, y6, y7;
 
-  not n[9:1](p, pn);
 
   xnor (y0, pn[1], pn[2]);
   xnor (y1, pn[3], pn[4]);
