@@ -1,53 +1,84 @@
 `timescale 10ns / 1ns
 
-module main ();
+`define assert_eq(expect, actual, desc) \
+  if (actual == expect) $display("ok %s", desc);\
+  else $display("not ok %s - expected %X got %X", desc, expect, actual);\
+
+/* HP 3478A address bus.
+ * input is an 8-bit binary counter
+ * counts 00-FF (1024 cycles) once with start/stop high
+ * then again with start/stop low, then repeat
+ */
+module test ();
+  reg reset_l = 0;
   reg clock = 0;
   reg start = 1;
-  reg stop  = 1;
-  reg data  = 1;
-  reg reset_l = 0;
-  wire [15:0] signature;
 
-  sigan sigan (
-    .reset_l(reset_l),
-    .clock(!clock),
-    .start(!start),
-    .stop(!stop),
-    .data(data),
-    .signature(signature)
-  );
+  reg [7:0] addr = 0;
+  reg [7:0] addr_bus = 8'hFF;
+
+  wire [15:0] signature[7:0];
+
+  genvar i;
+  generate
+    for (i = 0; i < 8; i = i + 1) begin
+      sigan sigan (
+        .reset_l(reset_l),
+        .clock(!clock),
+        .start(!start),
+        .stop(!start),
+        .data(addr_bus[i]),
+        .signature(signature[i])
+      );
+    end
+  endgenerate
 
   initial begin
-  end
-
-  initial begin
-    $dumpfile("test.vcd");
-    $dumpvars(0, main);
-
     #100 reset_l = 1;
     #100 clock = 1;
-    repeat (6) begin
-      repeat (12) begin
-        #14 {start, stop, data} = 0;
-        #50 clock = 0;
-        #22 data = 1'b1;
-        #104 {start, stop} = 2'b11;
-        #66 clock = 1'b1;
-        #14 {start, stop} = 0;
-        #50 clock = 0;
-        #126 {start, stop} = 2'b11;
-        #66 clock = 1'b1;
-      end
-      repeat (1012) begin
-        #14 data = 0;
-        #50 clock = 0;
-        #22 data = 1'b1;
-        #170 clock = 1'b1;
+    fork
+      // generate clock
+      forever begin // period 256
         #64 clock = 0;
-        #192 clock = 1;
+        #192 clock = 1'b1;
       end
-    end
 
-    $finish;
+      // generate start/stop
+      forever begin
+        // 1024 cycles of effective 0 (low on clock falling edge)
+        repeat (1024) begin // period 256
+          #14 start = 0;
+          #176 start = 1'b1;
+          #66;
+        end
+
+        // 1024 cycles of effective 1 (always high), period 256
+        #262144;
+      end
+
+      // generate address bus
+      forever begin // period 256
+        #14 addr_bus = addr;
+        #72 addr_bus = 8'hFF;
+        #170 addr = addr + 1;
+      end
+
+      begin
+        // 4 * 1024 * 256 -- four complete cycles
+        #1048576;
+
+        $display("1..8");
+        `assert_eq(16'hD62F, signature[0], "1 A0");
+        `assert_eq(16'hB21A, signature[1], "2 A1");
+        `assert_eq(16'hDA07, signature[2], "3 A2");
+        `assert_eq(16'hD0AA, signature[3], "4 A3");
+        `assert_eq(16'hE030, signature[4], "5 A4");
+        `assert_eq(16'h4442, signature[5], "6 A5");
+        `assert_eq(16'h4F2A, signature[6], "7 A6");
+        `assert_eq(16'h0772, signature[7], "8 A7");
+
+        $finish;
+      end
+    join
   end
 endmodule
