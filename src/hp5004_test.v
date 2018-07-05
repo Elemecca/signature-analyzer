@@ -10,9 +10,9 @@
  * then again with start/stop low, then repeat
  */
 module test ();
-  reg reset_l = 0;
-  reg clock = 0;
-  reg start = 1;
+  reg reset = 1'b1;
+  reg clock = 1'b0;
+  reg start = 1'b1;
 
   reg [7:0] addr = 0;
   reg [7:0] addr_bus = 8'hFF;
@@ -23,7 +23,7 @@ module test ();
   generate
     for (i = 0; i < 8; i = i + 1) begin
       sigan sigan (
-        .reset_l(reset_l),
+        .reset(reset),
         .clock(!clock),
         .start(!start),
         .stop(!start),
@@ -34,7 +34,7 @@ module test ();
   endgenerate
 
   initial begin
-    #100 reset_l = 1;
+    #100 reset = 0;
     #100 clock = 1;
     fork
       // generate clock
@@ -45,15 +45,15 @@ module test ();
 
       // generate start/stop
       forever begin
+        // 1024 cycles of effective 1 (always high), period 256
+        #(1024 * 256);
+
         // 1024 cycles of effective 0 (low on clock falling edge)
         repeat (1024) begin // period 256
           #14 start = 0;
           #176 start = 1'b1;
           #66;
         end
-
-        // 1024 cycles of effective 1 (always high), period 256
-        #262144;
       end
 
       // generate address bus
@@ -64,8 +64,8 @@ module test ();
       end
 
       begin
-        // 4 * 1024 * 256 -- four complete cycles
-        #1048576;
+        // four complete cycles
+        #(4 * 2048 * 256);
 
         $display("1..8");
         `assert_eq(16'hD62F, signature[0], "1 A0");

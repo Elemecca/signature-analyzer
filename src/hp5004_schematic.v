@@ -2,7 +2,7 @@
 
 
 module sigan (
-  input reset_l,
+  input reset,
   input clock,
   input start,
   input stop,
@@ -12,7 +12,7 @@ module sigan (
   output gate
 );
   parameter service = 0;
-  wire reset_h = !reset_l;
+  wire reset_l = !reset;
   wire data_latch;
   wire word_gate, clk_gate;
   wire word_reset_l, word_clk;
@@ -40,7 +40,7 @@ module sigan (
     .q(data_latch)
   );
 
-  nor u7b (word_reset_l, word_gate, reset_h);
+  nor u7b (word_reset_l, word_gate, reset);
   nand u11c (word_clk, clk_gate, !clock);
 
   word_gen #(.service(service)) word_gen (
@@ -57,8 +57,8 @@ module sigan (
   // The original board uses 4x 4-bit latches with 3-state outputs
   // driving a shared bus into the 7-segment character decoder.
   initial signature = 0;
-  always @(posedge word_gate, posedge reset_h) begin
-    if (reset_h) signature <= 0;
+  always @(posedge word_gate, posedge reset) begin
+    if (reset) signature <= 0;
     else signature <= word;
   end
 endmodule
